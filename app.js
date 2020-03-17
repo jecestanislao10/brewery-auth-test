@@ -5,7 +5,13 @@ const auth = require('./index');
 
 app.listen(3000, async () => {
     try{
-        await auth.initialize();
+        await auth.initialize({
+            databaseName: 'yourdatabase',
+            username: 'root',
+            password: 'root',
+            dialect: 'mysql',
+            host: 'localhost',
+        });
         const user = await auth.signup({
         username: 'jerico',
         password: "111111",

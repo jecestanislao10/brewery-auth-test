@@ -5,14 +5,7 @@ let repository;
 const Crypto = require('crypto');
 let code;
 
-exports.initialize = async () => {
-    const configData = {
-        databaseName: 'yourdatabase',
-        username: 'root',
-        password: 'root',
-        dialect: 'mysql',
-        host: 'localhost',
-    };
+exports.initialize = async (configData) => {
         try {            
             const db = await config(configData);
             repository = await db.define('clients', {
