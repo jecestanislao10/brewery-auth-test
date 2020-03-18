@@ -6,7 +6,7 @@ const {ExtractJwt, Strategy} = require('passport-jwt');
 const secretKey = 'supersecretkey';
 const Crypto = require('crypto');
 
-let code, repository, payloadId;
+let signupCode, repository, payloadId, forgotPasswordCode, mfaCode, loginId;
 
 exports.configure = async (configData) => {
         try {            
@@ -30,6 +30,12 @@ exports.configure = async (configData) => {
                 password: {
                   type: DataTypes.STRING,
                   allowNull: false
+                },
+                MFA: {
+                  type: DataTypes.BOOLEAN
+                },
+                registered: {
+                  type: DataTypes.BOOLEAN
                 }
               }, {
                 // Other model options go here
@@ -42,18 +48,16 @@ exports.configure = async (configData) => {
     }
 
 exports.signup = (body) => {
-        const { email, username, password } = body;
         return new Promise((resolve, reject) => {
-            repository.create({
-                email: email,
-                password: password,
-                username: username
-            }).then(user => {
-              code = Math.random();
+            repository.create(body , {raw: true}).then(user => {
+              signupCode = {
+                clientId: user.id,
+                code: Math.random()
+              }
               const response = {
-                clientId: user.dataValues.id,
-                password: user.dataValues.password,
-                confirmationCode: code
+                clientId: user.id,
+                password: user.password,
+                confirmationCode: signupCode.code
               }
 // must send a confirmation code either email, or mobile
               resolve(response)
@@ -66,23 +70,86 @@ exports.login = (body) => {
   const { clientId, clientSecret } = body;
 
   return new Promise((resolve, reject) => {
+    repository.findByPk(clientId, {raw: true}).then(user => {
+      if(user.password == clientSecret){
+        if(user.registered === 1){
+          loginId= user.id;
+          const response = {
+            clientId: user.id,
+            message: 'Use loginNewPasswordRequired function'
+          };
+          resolve(response);
+        }
+        if (user.MFA === 1){
+          mfaCode = {
+            clientId: user.id,
+            code: Math.random()
+          }
+          resolve(mfaCode);
+        }
+        else {
+          const token = jwt.sign({clientId: user.id}, secretKey, {
+            expiresIn: '1h'
+          })
+          const refreshToken = jwt.sign({accessToken: token}, secretKey, {
+            expiresIn: '24h'
+          })
+          const response = {
+            clientId: user.id,
+            token: token,
+            refreshToken: refreshToken
+          }
+          resolve(response);
+        }
+      }
+    }).catch(err => reject(err));
+  })
+}
+
+exports.loginNewPasswordRequired = (clientId, newPassword) => {
+  return new Promise((resolve, reject) => {
+    if(loginId !== clientId){
+      reject(null);
+    }
     repository.findByPk(clientId).then(user => {
-      if(user.dataValues.password == clientSecret){
-        const token = jwt.sign({clientId: user.dataValues.id}, secretKey, {
+      user.update({registered: 0, password: newPassword});
+    }).then( result => {
+      const token = jwt.sign({clientId: clientId}, secretKey, {
+        expiresIn: '1h'
+      })
+      const refreshToken = jwt.sign({accessToken: token}, secretKey, {
+        expiresIn: '24h'
+      })
+      const response = {
+        clientId: clientId,
+        token: token,
+        refreshToken: refreshToken
+      }
+      resolve(response);
+    }).catch(err => resolve(err));
+  })
+
+}
+
+exports.loginMfa = (clientId, code) => {
+    return new Promise((resolve, reject) => {
+      if(mfaCode.clientId === clientId && mfaCode.code === code){
+        const token = jwt.sign({clientId: clientId}, secretKey, {
           expiresIn: '1h'
         })
         const refreshToken = jwt.sign({accessToken: token}, secretKey, {
           expiresIn: '24h'
         })
         const response = {
-          clientId: user.dataValues.id,
+          clientId: clientId,
           token: token,
           refreshToken: refreshToken
         }
         resolve(response);
+      }else{
+        reject('invalid code');
       }
-    }).catch(err => reject(err));
-  })
+    })
 }
 
 exports.register = (body) => {
@@ -92,11 +159,13 @@ exports.register = (body) => {
           repository.create({
               email: email,
               password: password,
-              username: username
-          }).then(user => {
+              username: username,
+              MFA: false,
+              registered: true
+          }, {raw: true}).then(user => {
             const response = {
-              clientId: user.dataValues.id,
-              password: user.dataValues.password
+              clientId: user.id,
+              password: user.password
             }
 //must send an email for password reset link
             resolve(response)
@@ -110,15 +179,11 @@ exports.signupConfirm = (body) => {
     const { clientId, confirmationCode } = body;
 
     return new Promise((resolve, reject) => {
-      repository.findByPk(clientId).then(user => {
-        if (confirmationCode === code) {
-          resolve(user.dataValues);
-        }else {
-          const error = new Error();
-          error.message = 'Wrong code';
-          throw error;
-        }
-        
+      if (signupCode.clientId !== clientId || signupCode.code !== confirmationCode){
+        reject(null);
+      }
+      repository.findByPk(clientId, {raw: true}).then(user => {
+        resolve(user);
       }).catch(err => reject(err.message));
     });
 }
@@ -128,15 +193,46 @@ exports.sigupResend = (body) => {
 
     return new Promise((resolve, reject) => {
       repository.findByPk(clientId).then(user => {
-        code = Math.random();
+        signupCode = {
+          clientId: clientId,
+          code: Math.random()
+        }
 // sends new confirmation code, through sms or email,
         const response = {
-          clientId: clientId,
-          confirmationCode: code
+          clientId: signupCode.clientId,
+          confirmationCode: signupCode.code
         }
         resolve(response);
       }).catch(err => reject(err.message));
     });
+}
+
+exports.passwordForgot = (clientId) => {
+
+  return new Promise((resolve, reject) => {
+    repository.findByPk(clientId).then(result => {
+      forgotPasswordCode = {
+        clientId: clientId,
+        code: Math.random()
+      }
+
+      // must send an email for password link
+      resolve(forgotPasswordCode);
+    }).catch(err => reject(err));
+  })
+
+};
+
+exports.passwordReset = (clientId, clientCode, newPassword) => {
+  return new Promise ((resolve, reject) => {
+    if (clientId === forgotPasswordCode.clientId && clientCode === forgotPasswordCode.code){
+      repository.update({password: newPassword}, {where: { id: clientId}}).then(result => {
+        resolve(result);
+      }).catch(err => reject(err));
+    }else{
+      reject(null);
+    }
+  })
 }
 
 exports.initialize = ()  => {
@@ -154,6 +250,7 @@ exports.authenticate = () => {
         
   
         passport.use(new Strategy(jwtOptions, (jwt_payload, done) => {
+          console.log('payload', jwt_payload);
           repository.findByPk(jwt_payload.clientId, {raw: true})
             .then((user) => {
               done(null, user);
@@ -198,6 +295,7 @@ exports.profile = () => {
     });
 }
 
+
 exports.profileEdit = (body) => {
     return new Promise((resolve, reject) => {
       repository.update(body, {returning: true,
@@ -210,6 +308,22 @@ exports.profileEdit = (body) => {
       }).catch(err => reject(err));
     })
 };
+
+exports.passwordChange = (oldPassword, newPassword) => {
+  return new Promise((resolve, reject) => {
+    repository.findByPk(payloadId).then(user => {
+      if(user.dataValues.password === oldPassword && user.dataValues.password !== newPassword){
+        user.update({password: newPassword});
+      }else{
+        reject(null);
+      }
+    }).then(result => {
+      resolve({
+        newPassword: newPassword
+      });
+    }).catch(err => reject(err));
+  })
+}
 
 exports.deleteUser = (body) => {
   const { clientId, clientSecret } = body;
@@ -226,6 +340,31 @@ exports.deleteUser = (body) => {
           }
           resolve(response);
       }).catch(err => reject(err));
+  })
+}
+
+exports.getMfa = () => {
+  return new Promise((resolve, reject) => {
+    repository.findByPk(payloadId, {raw: true}).then( user => {
+      const response = {
+        MFA: user.MFA
+      }
+      resolve(response);
+    }).catch(err => reject(err));
+  })
+}
+
+exports.setMfa = (body) => {
+  return new Promise((resolve, reject) => {
+    if (body.mfa !== true && body.mfa !== false){
+      reject('parameter must be boolean(true/false)');
+    }
+    repository.findByPk(payloadId).then( user => {
+      user.update({mfa: body.mfa});
+    }).then(result => {
+      resolve(body);
+    })
+    .catch(err => reject(err));
   })
 }
 // signup(body) {

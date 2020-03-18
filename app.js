@@ -13,10 +13,18 @@ app
 app.use('/api', auth.authenticate(), async () => {
     const profile = await auth.profile();
     console.log(profile);
+    const mfaData = await auth.getMfa();
+    console.log(mfaData);
+    const setMfa = await auth.setMfa({
+        mfa: false
+    });
+    console.log(setMfa);
     const updated = await auth.profileEdit({
         username: 'jericooo11'
     });
     console.log(updated);
+    const newPassword = await auth.passwordChange(profile.password, Math.random());
+    console.log(newPassword);
 })
 
 app.listen(3000, async () => {
@@ -34,21 +42,31 @@ app.listen(3000, async () => {
         const user = await auth.signup({
         username: 'jerico',
         password: "111111",
-        email: 'jestanislao@stratpoint.com'
+        email: 'jestanislao@stratpoint.com',
+        MFA: true,
+        registered: 0
         });
         console.log(user);
+        
+        //forgotPassword
+        const forgot = await auth.passwordForgot(user.clientId);
+        console.log(forgot);
 
+        //passwordReset
+        const reset = await auth.passwordReset(user.clientId, forgot.code, '111111' );
+        console.log(reset);
         //register
         const registeredUser = await auth.register({
             username: 'jerico',
-            email: 'jestanislao@stratpoint.com'
+            email: 'jestanislao@stratpoint.com',
+            registered: true
             });
             console.log('register');
             console.log(registeredUser);
           
          //confirmuser   
          const confirmUser = await auth.signupConfirm({
-             clientId: registeredUser.clientId,
+             clientId: user.clientId,
              confirmationCode: user.confirmationCode
          });
 
@@ -78,15 +96,27 @@ app.listen(3000, async () => {
         });
         console.log('login');
         console.log(loginData);
+
+        const mfaLogin = await auth.loginMfa(loginData.clientId, loginData.code);
+        console.log(mfaLogin);
         
+        const loginRegistered = await auth.login({
+            clientId: registeredUser.clientId,
+            clientSecret: registeredUser.password
+        });
+        console.log('login');
+        console.log(loginRegistered);
+
+        const newPassLogin = await auth.loginNewPasswordRequired(loginRegistered.clientId,'New password');
+        console.log(newPassLogin);
         //delete
 
-        const deleteData = await auth.deleteUser({
-            clientId: user.clientId,
-            clientSecret: user.password
-        });
+        // const deleteData = await auth.deleteUser({
+        //     clientId: user.clientId,
+        //     clientSecret: user.password
+        // });
 
-        console.log(deleteData);
+        // console.log(deleteData);
 
     }catch(err){
         throw err;
