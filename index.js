@@ -10,18 +10,15 @@ let signupCode, repository, payloadId, forgotPasswordCode, mfaCode, loginId;
 
 exports.configure = async (configData) => {
         try {            
-            const db = await config(configData);
-            repository = await db.define('clients', {
+            const db = await config(configData.database);
+            const attributes = () => {
+              const columns = {
                 // Model attributes are defined here
                 id:{
                   allowNull: false,
                   primaryKey: true,
                   type: DataTypes.UUID,
                   defaultValue: DataTypes.UUIDV4
-                },
-                email: {
-                  type: DataTypes.STRING,
-                  allowNull: false
                 },
                 username: {
                   type: DataTypes.STRING,
@@ -37,7 +34,16 @@ exports.configure = async (configData) => {
                 registered: {
                   type: DataTypes.BOOLEAN
                 }
-              }, {
+              };
+              if(configData.attributes.includes('Email'.toLowerCase())) {
+                columns.email = {
+                    type: DataTypes.STRING,
+                    allowNull: false
+                }
+              }
+              return (columns)
+            }
+            repository = await db.define('clients', attributes(), {
                 // Other model options go here
               });
             await repository.sync();

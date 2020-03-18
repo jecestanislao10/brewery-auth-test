@@ -30,13 +30,15 @@ app.use('/api', auth.authenticate(), async () => {
 app.listen(3000, async () => {
     try{
         //configure
-        await auth.configure({
+        await auth.configure({database:{
             databaseName: 'yourdatabase',
             username: 'root',
             password: 'root',
             dialect: 'mysql',
             host: 'localhost',
-        });
+        },
+        attributes: ['email']
+    });
 
         //signup
         const user = await auth.signup({

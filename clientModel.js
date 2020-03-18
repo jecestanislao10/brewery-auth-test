@@ -1,7 +1,8 @@
-const { DataTypes } = require('sequelize');
+const { DataTypes, Sequelize } = require('sequelize');
+const db = require('./db')
 
-module.exports = (db) => {
-  return db.define('clients', {
+module.exports = () => {
+  return db.Sequelize.define('testTable', {
     // Model attributes are defined here
     email: {
       type: DataTypes.STRING,

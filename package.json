@@ -9,6 +9,7 @@
   "author": "Jerico Estanislao <jestanislao@stratpoint.com>",
   "license": "MIT",
   "dependencies": {
+    "brewery-auth-test": "^1.1.2",
     "cors": "^2.8.5",
     "crypto": "^1.0.1",
     "express": "^4.17.1",
